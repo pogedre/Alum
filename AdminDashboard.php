@@ -5,6 +5,8 @@ if (!isset($_SESSION["logged_in"]) || $_SESSION["logged_in"] !== true || $_SESSI
     header("Location: Login.php");
     exit;
 }
+require_once __DIR__ . "/includes/admin_auth.php";
+require_once __DIR__ . "/connection.php";
 
 // Pull the correct session variables set by LoginProcess.php
 $adminName = $_SESSION['user_name'] ?? 'Administrator';
