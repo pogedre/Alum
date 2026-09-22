@@ -1,1 +1,169 @@
 
+<?php
+require_once __DIR__ . "/includes/admin_auth.php";
+require_once __DIR__ . "/connection.php";
+
+mysqli_query($connection, "CREATE TABLE IF NOT EXISTS system_settings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    setting_key VARCHAR(100) NOT NULL UNIQUE,
+    setting_value TEXT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+$message = "";
+$messageType = "";
+
+$defaultSettings = [
+    "site_name" => "AlumTrace",
+    "support_email" => "support@alumtrace.edu",
+    "contact_phone" => "+63 9161 196 5036",
+    "maintenance_mode" => "0",
+];
+
+foreach ($defaultSettings as $key => $value) {
+    $stmt = mysqli_prepare($connection, "INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, "ss", $key, $value);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+    }
+}
+
+if ($_SERVER["REQUEST_METHOD"] === "POST" && isset($_POST["save_settings"])) {
+    $settings = [
+        "site_name" => trim($_POST["site_name"] ?? "AlumTrace"),
+        "support_email" => trim($_POST["support_email"] ?? "support@alumtrace.edu"),
+        "contact_phone" => trim($_POST["contact_phone"] ?? "+63 9161 196 5036"),
+        "maintenance_mode" => ($_POST["maintenance_mode"] ?? "0") === "1" ? "1" : "0",
+    ];
+
+    foreach ($settings as $key => $value) {
+        $stmt = mysqli_prepare($connection, "INSERT INTO system_settings (setting_key, setting_value) VALUES (?, ?) ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+        if ($stmt) {
+            mysqli_stmt_bind_param($stmt, "ss", $key, $value);
+            mysqli_stmt_execute($stmt);
+            mysqli_stmt_close($stmt);
+        }
+    }
+
+    $message = "Settings saved successfully.";
+    $messageType = "success";
+}
+
+$settings = [];
+$result = mysqli_query($connection, "SELECT setting_key, setting_value FROM system_settings");
+if ($result) {
+    while ($row = mysqli_fetch_assoc($result)) {
+        $settings[$row["setting_key"]] = $row["setting_value"];
+    }
+}
+
+$settings = array_merge($defaultSettings, $settings);
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Settings | AlumTrace</title>
+    <link rel="icon" type="image/png" href="images/Seal.png?v=<?= time(); ?>">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        :root { --green:#0f5132; --green-2:#198754; --green-soft:#eaf6ef; --text:#1f2d24; --muted:#536760; --bg:#f4f7f5; --card:#fff; --border:#e7ece9; }
+        * { box-sizing:border-box; }
+        body { margin:0; font-family:'Inter',sans-serif; background:var(--bg); color:var(--text); }
+        a { text-decoration:none; color:inherit; }
+        .layout { display:flex; min-height:100vh; }
+        .sidebar { width:250px; background:#fff; border-right:1px solid var(--border); padding:18px 12px; }
+        .brand { display:flex; align-items:center; gap:12px; padding:10px 12px 18px; border-bottom:1px solid var(--border); }
+        .brand img { width:36px; height:36px; }
+        .brand strong { color:var(--green); font-size:1.1rem; }
+        .nav { display:flex; flex-direction:column; gap:8px; margin-top:16px; }
+        .nav a { display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:12px; color:var(--muted); font-weight:600; }
+        .nav a.active, .nav a:hover { background:var(--green-soft); color:var(--green); }
+        .main { flex:1; }
+        .topbar { height:74px; background:linear-gradient(135deg,var(--green),var(--green-2)); color:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 30px; }
+        .user { display:flex; align-items:center; gap:14px; }
+        .meta { text-align:right; }
+        .meta .name { font-weight:700; }
+        .meta .email { opacity:0.8; font-size:0.8rem; }
+        .avatar { width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.18); font-weight:700; }
+        .logout { display:inline-flex; align-items:center; gap:8px; padding:9px 14px; border-radius:10px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.18); color:#fff; }
+        .content { padding:24px 30px 40px; }
+        .panel { background:#fff; border:1px solid var(--border); border-radius:18px; box-shadow:0 10px 30px rgba(15,81,50,0.06); padding:22px; max-width:800px; }
+        h1 { margin:0 0 20px; color:var(--green); }
+        .alert { padding:12px 16px; border-radius:12px; margin-bottom:18px; font-weight:600; }
+        .alert-success { background:#edfdf3; border:1px solid #bfe9cf; color:#195b3a; }
+        .field { display:flex; flex-direction:column; gap:8px; margin-bottom:14px; }
+        .field input, .field select { border:1px solid var(--border); border-radius:12px; padding:12px 14px; font:inherit; }
+        .btn { display:inline-flex; align-items:center; gap:8px; border:none; border-radius:12px; padding:11px 16px; font-weight:700; cursor:pointer; }
+        .btn-primary { background:var(--green); color:#fff; }
+        @media (max-width: 900px) { .sidebar { display:none; } .content { padding:20px 16px 28px; } }
+    </style>
+</head>
+<body>
+<div class="layout">
+    <aside class="sidebar">
+        <div class="brand">
+            <img src="images/Seal.png" alt="AlumTrace">
+            <strong>AlumTrace</strong>
+        </div>
+        <nav class="nav">
+            <a href="AdminDashboard.php"><i class="fa-solid fa-house"></i> Dashboard</a>
+            <a href="ManageAlumni.php"><i class="fa-solid fa-users"></i> Manage Alumni</a>
+            <a href="ManageSurveys.php"><i class="fa-solid fa-square-poll-horizontal"></i> Tracer Surveys</a>
+            <a href="ManageAnnouncements.php"><i class="fa-solid fa-bullhorn"></i> Announcements</a>
+            <a href="Reports.php"><i class="fa-solid fa-chart-column"></i> Reports</a>
+            <a class="active" href="AdminSettings.php"><i class="fa-solid fa-gear"></i> Settings</a>
+        </nav>
+    </aside>
+
+    <main class="main">
+        <header class="topbar">
+            <div></div>
+            <div class="user">
+                <div class="meta">
+                    <div class="name"><?= htmlspecialchars($adminName); ?></div>
+                    <div class="email"><?= htmlspecialchars($adminEmail); ?></div>
+                </div>
+                <div class="avatar"><?= htmlspecialchars(strtoupper(substr($adminInitial, 0, 1))); ?></div>
+                <a class="logout" href="Logout.php"><i class="fa-solid fa-right-from-bracket"></i> Logout</a>
+            </div>
+        </header>
+
+        <div class="content">
+            <h1>System Settings</h1>
+            <?php if ($message !== ""): ?>
+                <div class="alert alert-<?= htmlspecialchars($messageType); ?>"><?= htmlspecialchars($message); ?></div>
+            <?php endif; ?>
+
+            <div class="panel">
+                <form method="post">
+                    <div class="field">
+                        <label for="site_name">Site name</label>
+                        <input id="site_name" name="site_name" type="text" value="<?= htmlspecialchars($settings["site_name"] ?? "AlumTrace"); ?>">
+                    </div>
+                    <div class="field">
+                        <label for="support_email">Support email</label>
+                        <input id="support_email" name="support_email" type="email" value="<?= htmlspecialchars($settings["support_email"] ?? "support@alumtrace.edu"); ?>">
+                    </div>
+                    <div class="field">
+                        <label for="contact_phone">Contact phone</label>
+                        <input id="contact_phone" name="contact_phone" type="text" value="<?= htmlspecialchars($settings["contact_phone"] ?? "+63 9161 196 5036"); ?>">
+                    </div>
+                    <div class="field">
+                        <label for="maintenance_mode">Maintenance mode</label>
+                        <select id="maintenance_mode" name="maintenance_mode">
+                            <option value="0" <?= (($settings["maintenance_mode"] ?? "0") === "0") ? "selected" : ""; ?>>Off</option>
+                            <option value="1" <?= (($settings["maintenance_mode"] ?? "0") === "1") ? "selected" : ""; ?>>On</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-primary" type="submit" name="save_settings"><i class="fa-solid fa-floppy-disk"></i> Save Settings</button>
+                </form>
+            </div>
+        </div>
+    </main>
+</div>
+</body>
+</html>
