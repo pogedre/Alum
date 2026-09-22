@@ -1,87 +1,59 @@
 <?php
-session_start();
+declare(strict_types=1);
 
-require_once "connection.php";
+require_once __DIR__ . '/includes/auth.php';
+require_once __DIR__ . '/includes/csrf.php';
+require_once __DIR__ . '/connection.php';
 
-if ($_SERVER["REQUEST_METHOD"] !== "POST") {
-    header("Location: Login.php");
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: Login.php');
+    exit;
+}
+verify_csrf();
+
+$email = trim(strtolower($_POST['email'] ?? ''));
+$password = $_POST['password'] ?? '';
+
+if ($email === '' || $password === '') {
+    $_SESSION['login_message'] = 'Please enter your email and password.';
+    $_SESSION['login_message_type'] = 'danger';
+    header('Location: Login.php');
     exit;
 }
 
-$email = trim($_POST["email"] ?? "");
-$password = $_POST["password"] ?? "";
-
-if (empty($email) || empty($password)) {
-    $_SESSION["login_message"] = "Please enter your email and password.";
-    $_SESSION["login_message_type"] = "danger";
-    header("Location: Login.php");
-    exit;
-}
-
-$stmt = mysqli_prepare(
-    $connection,
-    "SELECT id, last_name, first_name, middle_name, student_id, course, batch_year, email, password, role FROM users WHERE email = ? LIMIT 1"
-);
-
+$stmt = mysqli_prepare($connection, 'SELECT id,last_name,first_name,middle_name,student_id,course,batch_year,email,password,role FROM users WHERE email = ? LIMIT 1');
 if (!$stmt) {
-    $_SESSION["login_message"] = "Database error: " . mysqli_error($connection);
-    $_SESSION["login_message_type"] = "danger";
-    header("Location: Login.php");
+    $_SESSION['login_message'] = 'Unable to process login.';
+    $_SESSION['login_message_type'] = 'danger';
+    header('Location: Login.php');
     exit;
 }
 
-mysqli_stmt_bind_param($stmt, "s", $email);
+mysqli_stmt_bind_param($stmt, 's', $email);
 mysqli_stmt_execute($stmt);
-$result = mysqli_stmt_get_result($stmt);
-
-if (mysqli_num_rows($result) === 1) {
-    $user = mysqli_fetch_assoc($result);
-
-    if (password_verify($password, $user["password"])) {
-        
-        // 1. Clear old session data completely to avoid cross-account data leaks
-        $_SESSION = array();
-
-        // 2. Prevent session fixation attacks
-        session_regenerate_id(true);
-
-        $userName = trim(
-            $user["first_name"] . " " .
-            ($user["middle_name"] ? $user["middle_name"] . " " : "") .
-            $user["last_name"]
-        );
-
-        // 3. Assign session variables (including keys matching Dashboard.php)
-        $_SESSION["logged_in"] = true;
-        $_SESSION["user_id"] = $user["id"];
-        $_SESSION["user_name"] = $userName;       // Used by Dashboard.php
-        $_SESSION["user_email"] = $user["email"]; // Used by Dashboard.php
-        $_SESSION["full_name"] = $userName;
-        $_SESSION["last_name"] = $user["last_name"];
-        $_SESSION["first_name"] = $user["first_name"];
-        $_SESSION["middle_name"] = $user["middle_name"];
-        $_SESSION["student_id"] = $user["student_id"];
-        $_SESSION["course"] = $user["course"];
-        $_SESSION["batch_year"] = $user["batch_year"];
-        $_SESSION["email"] = $user["email"];
-        $_SESSION["role"] = $user["role"] ?? "alumni";
-
-        mysqli_stmt_close($stmt);
-
-        if ($user["role"] === "admin") {
-            header("Location: AdminDashboard.php");
-        } else {
-            header("Location: Dashboard.php");
-        }
-        exit;
-    }
-}
-
+$user = mysqli_fetch_assoc(mysqli_stmt_get_result($stmt));
 mysqli_stmt_close($stmt);
 
-$_SESSION["login_message"] = "Invalid email or password.";
-$_SESSION["login_message_type"] = "danger";
+if (!$user || !password_verify($password, (string) $user['password'])) {
+    $_SESSION['login_message'] = 'Invalid email or password.';
+    $_SESSION['login_message_type'] = 'danger';
+    header('Location: Login.php');
+    exit;
+}
 
-header("Location: Login.php");
+session_regenerate_id(true);
+$_SESSION['logged_in'] = true;
+$_SESSION['user_id'] = (int) $user['id'];
+$_SESSION['user_name'] = trim($user['first_name'] . ' ' . ($user['middle_name'] ? $user['middle_name'] . ' ' : '') . $user['last_name']);
+$_SESSION['user_email'] = $user['email'];
+$_SESSION['first_name'] = $user['first_name'];
+$_SESSION['middle_name'] = $user['middle_name'];
+$_SESSION['last_name'] = $user['last_name'];
+$_SESSION['student_id'] = $user['student_id'];
+$_SESSION['course'] = $user['course'];
+$_SESSION['batch_year'] = $user['batch_year'];
+$_SESSION['role'] = $user['role'] ?: 'alumni';
+$_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+
+header('Location: ' . ($_SESSION['role'] === 'admin' ? 'AdminDashboard.php' : 'Dashboard.php'));
 exit;
-?>
