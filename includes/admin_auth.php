@@ -2,7 +2,9 @@
 declare(strict_types=1);
 
 if (session_status() !== PHP_SESSION_ACTIVE) {
-    require_once __DIR__ . '/auth.php';
+    $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+    session_set_cookie_params(['httponly'=>true,'secure'=>$secure,'samesite'=>'Lax']);
+    session_start();
 }
 
 if (($_SESSION['logged_in'] ?? false) !== true || ($_SESSION['role'] ?? '') !== 'admin') {
